@@ -1,6 +1,10 @@
 //   SHACL RDF shape checker
 //
 // This is or was https://linkeddata.github.io/shacl-check
+// MIT Licence
+//
+// This is probably incomplete implementation of SHACL
+// See https://www.w3.org/TR/shacl/
 
 const $rdf = require('rdflib')
 const RDF = $rdf.Namespace('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
@@ -10,14 +14,13 @@ const a = RDF('type')
 // see sh:nodeKind for these values
 const termTypeMap = {'NamedNode': 'IRI'}
 
-
 class ShapeChecker {
   constructor (kb, shapeDoc, targetDoc, reportDoc, options) {
     this.kb = kb
     this.shapeDoc = shapeDoc
     this.targetDoc = targetDoc
     this.reportDoc = reportDoc
-    this.options = options || {}
+    this.options = options || {} // eg noResultMessage
     if (reportDoc) {
       this.report = this.kb.bnode()
       // this.report = this.kb.sym(reportDoc.uri + '#this')
@@ -31,22 +34,25 @@ class ShapeChecker {
     console.log(message)
   }
 
-  validationResult (params, message) {
+// See https://www.w3.org/TR/shacl/#validation-report
+  validationResult (issue) {
     this.conforms = false
     if (this.reportDoc) {
       let result = this.kb.bnode()
       this.kb.add(this.report, sh('result'), result, this.reportDoc)
       this.kb.add(result, a, sh('ValidationResult'), this.reportDoc)
-      this.kb.add(result, sh('focusNode'), params.node, this.reportDoc)
-      this.kb.add(result, sh('sourceShape'), params.shape, this.reportDoc)
-      if (params.path) this.kb.add(result, sh('resultPath'), params.path, this.reportDoc)
-      if (params.object !== undefined) {
-        this.kb.add(result, sh('value'), params.object, this.reportDoc)
+      this.kb.add(result, sh('focusNode'), issue.node, this.reportDoc)
+      this.kb.add(result, sh('sourceShape'), issue.shape, this.reportDoc)
+      if (issue.path) this.kb.add(result, sh('resultPath'), issue.path, this.reportDoc)
+      if (issue.object !== undefined) {
+        this.kb.add(result, sh('value'), issue.object, this.reportDoc)
       }
-      this.kb.add(result, sh('resultMessage'), message, this.reportDoc)
-      let severity = this.kb.any(params.shape, sh('severity')) || sh('Violation')
+      if (!this.options.noResultMessage){
+        this.kb.add(result, sh('resultMessage'), issue.message, this.reportDoc)
+      }
+      let severity = this.kb.any(issue.shape, sh('severity')) || sh('Violation')
       this.kb.add(result, sh('resultSeverity'), severity, this.reportDoc)
-      this.kb.add(result, sh('sourceConstraintComponent'), sh(params.cc + 'ConstraintComponent'), this.reportDoc)
+      this.kb.add(result, sh('sourceConstraintComponent'), sh(issue.cc + 'ConstraintComponent'), this.reportDoc)
     }
   }
 
@@ -54,10 +60,11 @@ class ShapeChecker {
   execute () {
     const checker = this
     const kb = this.kb
+    this.conforms = true
     const post = function (issues) {
       if (!issues) return
       for (let i=0; i< issues.length; i++) {
-        checker.validationResult(issues[i].params, issues[i].message)
+        checker.validationResult(issues[i])
       }
     }
     kb.statementsMatching(null, sh('targetClass'), null, this.shapeDoc)
@@ -153,8 +160,8 @@ class ShapeChecker {
     var closed = kb.anyValue(shape, sh('closed'))
     closed = {'true': true, '1':true}[closed] || false
     console.log('  closed: ' + closed)
+    var allowed = []
     if (closed) {
-      var allowed = []
       var ignoredProperties = kb.any(shape, sh('ignoredProperties'))
       if (ignoredProperties){
         ignoredProperties = ignoredProperties.elements
@@ -165,9 +172,9 @@ class ShapeChecker {
       }
     }
     var issues = []
-    const noteIssue = function (params, message) {
-      console.log('  -> ' + message)
-      issues.push({ params: params, message: message })
+    const noteIssue = function (issue) {
+      console.log('  -> ' + issue.message)
+      issues.push(issue)
     }
     kb.each(shape, sh('property')).forEach(function (property) {
 
@@ -180,11 +187,11 @@ class ShapeChecker {
 
       let minCount = kb.anyValue(property, sh('minCount'))
       if (minCount && values.length < minCount) {
-        noteIssue({node, shape, cc:'MinCount'}, 'Too few (' + values.length + ') '  + path + ' on ' + node)
+        noteIssue({node, shape, path, cc:'MinCount', message: 'Too few (' + values.length + ') '  + path + ' on ' + node})
       }
       let maxCount = kb.anyValue(property, sh('maxCount'))
       if (maxCount && values.length > maxCount) {
-        noteIssue({node, shape, cc:'MaxCount'}, 'Too many (' + values.length + ') ' + path + ' on ' + node)
+        noteIssue({node, shape, path, cc:'MaxCount', message: 'Too many (' + values.length + ') ' + path + ' on ' + node})
       }
       let constraint
 
@@ -197,7 +204,7 @@ class ShapeChecker {
         if (constraints) {
           constraints.forEach(function (constraint) {
             if (constraint && !kb.holds(object, a, constraint)) {
-              noteIssue({node, shape, cc: 'Class'}, 'Error ' + object + ' should be in class ' + constraint)
+              noteIssue({node, shape, path, cc: 'Class', message: 'Error ' + object + ' should be in class ' + constraint})
             }
           })
         }
@@ -209,7 +216,7 @@ class ShapeChecker {
           let others = kb.each(node, constraint) // @@ extend to general paths??
           for (let k=0; k<others.length; k++) {
             if (!object.sameTerm(others[k])){
-              noteIssue({node, shape, object, cc: 'Equals'}, 'Error ' + object + ' should be equal to ' + constraint + ' that is, ' + others[k])
+              noteIssue({node, shape, path, object, cc: 'Equals', message: 'Error ' + object + ' should be equal to ' + constraint + ' that is, ' + others[k]})
             }
           }
         }
@@ -218,7 +225,7 @@ class ShapeChecker {
           let others = kb.each(node, constraint) // @@ extend to general paths??
           for (let k=0; k<others.length; k++){
             if (object.sameTerm(others[k])){
-              noteIssue({node, shape, object, cc: 'Equals'}, 'Error ' + object + ' should be NOT equal to ' + constraint + ' that is, ' + others[k])
+              noteIssue({node, shape, path, object, cc: 'Equals', message: 'Error ' + object + ' should be NOT equal to ' + constraint + ' that is, ' + others[k]})
             }
           }
         }
@@ -228,46 +235,46 @@ class ShapeChecker {
 
         constraint = kb.anyValue(property, sh('minInclusive'))
         if (constraint && !(object.value && object.value >= constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc: 'MinInclusive'}, 'Error ' + object + ' should more than or equal to  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'MinInclusive', message: 'Error ' + object + ' should more than or equal to  ' + constraint})
         }
         constraint = kb.anyValue(property, sh('minExclusive'))
         if (constraint && !(object.value && object.value > constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc:'MinExclusive'}, 'Error ' + object + ' should more than ' + constraint)
+          noteIssue({node, shape, path, object, cc:'MinExclusive', message: 'Error ' + object + ' should more than ' + constraint})
         }
         constraint = kb.anyValue(property, sh('maxInclusive'))
         if (constraint && !(object.value && object.value <= constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc: 'MaxInclusive'}, 'Error ' + object + ' should less than or equal to  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'MaxInclusive', message: 'Error ' + object + ' should less than or equal to  ' + constraint})
         }
         constraint = kb.anyValue(property, sh('maxExclusive'))
         if (constraint && !(object.value && object.value < constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc: 'MaxExclusive'}, 'Error ' + object + ' should less than or equal to  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'MaxExclusive', message: 'Error ' + object + ' should less than or equal to  ' + constraint})
         }
         constraint = kb.anyValue(property, sh('minLength'))
         if (constraint && !(object.value && object.value.length < constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc: 'MinLength'}, 'Error ' + object + ' should less than or equal to  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'MinLength', message: 'Error ' + object + ' should less than or equal to  ' + constraint})
         }
         constraint = kb.anyValue(property, sh('maxLength'))
         if (constraint && !(object.value && object.value.length > constraint)) { // @@@@ use som toJS to make work for any datatype
-          noteIssue({node, shape, object, cc: 'MexLength'}, 'Error ' + object + ' should less than or equal to  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'MexLength', message: 'Error ' + object + ' should less than or equal to  ' + constraint})
         }
 
         //////////////////////////////////  Others
 
         constraint = kb.any(property, sh('datatype'))
         if (constraint && !(object.datatype && object.datatype.sameTerm(constraint))) {
-          noteIssue({node, shape, object, cc: 'Datatype'}, 'Error ' + object + ' should be datatype  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'Datatype', message: 'Error ' + object + ' should be datatype  ' + constraint})
         }
         constraint = kb.anyValue(property, sh('languageIn'))
         if (constraint) {
           let langs = constraint.elements.map(function (x) {return x.value}).join(',')
           if (!(object.lang && langs.includes(object.lang))) {
-            noteIssue({node, shape, object, cc: 'LanguageIn'}, 'Error ' + object + ' should be in one of languages: ' + langs)
+            noteIssue({node, shape, path, object, cc: 'LanguageIn', message: 'Error ' + object + ' should be in one of languages: ' + langs})
           }
         }
         constraint = kb.anyValue(property, sh('pattern'))
         if (constraint) {
           if (!(object.value && object.value.match(constraint))) {
-           noteIssue({node, shape, object, cc: 'Pattern'}, 'Error ' + object + ' should match pattern  ' + constraint)
+           noteIssue({node, shape, path, object, cc: 'Pattern', message: 'Error ' + object + ' should match pattern  ' + constraint})
          }
         }
         constraint = kb.any(property, sh('nodeKind'))
@@ -275,7 +282,7 @@ class ShapeChecker {
           let actual = termTypeMap[object.termType] || object.termType
           let allowed = constraint.uri.split('#')[1] // eg 'BlankNodeOrIRI'
           if (!allowed.includes(actual)) {
-            noteIssue({node, shape, object, cc: 'NodeKind'}, 'Error ' + object + ' should be of node kind:  ' + constraint)
+            noteIssue({node, shape, path, object, cc: 'NodeKind', message: 'Error ' + object + ' should be of node kind:  ' + constraint})
           }
         }
 
@@ -283,11 +290,11 @@ class ShapeChecker {
 
         constraint = kb.any(property, sh('node'))
         if (constraint && !(checkNodeShape(object, constraint))) {
-          noteIssue({node, shape, object, cc: 'Not'}, 'Error ' + object + ' should match shape  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'Not', message: 'Error ' + object + ' should match shape  ' + constraint})
         }
         constraint = kb.any(property, sh('not'))
         if (constraint && (checkNodeShape(object, constraint))) {
-          noteIssue({node, shape, object, cc: 'Not'}, 'Error ' + object + ' should NOT match shape  ' + constraint)
+          noteIssue({node, shape, path, object, cc: 'Not', message: 'Error ' + object + ' should NOT match shape  ' + constraint})
         }
         // @@ add adnd, or, xone
 
@@ -298,7 +305,7 @@ class ShapeChecker {
       let failed = false
       kb.statementsMatching(node).forEach(function (st) {
         if (!allowed[st.predicate.uri]){
-          noteIssue({shape, node, object: st.object, cc: 'Closed'}, 'Closed node has extra data: ' + st)
+          noteIssue({shape, node, object: st.object, cc: 'Closed', message: 'Closed node has extra data: ' + st})
         }
       })
     }

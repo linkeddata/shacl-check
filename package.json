@@ -1,0 +1,61 @@
+{
+  "name": "shacl-check",
+  "version": "0.0.1",
+  "description": "Subset of SHACL test functionality.",
+  "main": "./lib/shacl=check.js",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "scripts": {
+    "build-lib": "babel src -d lib",
+    "build-browserified": "browserify -r ./src/shacl-check.js -t babelify --exclude 'xhr2' > dist/shacl-check.js",
+    "build-minified": "browserify -r ./src/index.js:shacl-check -t babelify --exclude 'xhr2' -d -p [minifyify --no-map] > dist/solid.min.js",
+    "prebuild": "npm run clean && mkdir -p dist",
+    "build": "npm run build-lib && npm run build-browserified && npm run build-minified",
+    "clean": "rm -rf dist/ && rm -rf lib/",
+    "standard": "standard src/*",
+    "pretest": "npm run standard",
+    "test": "node ../../linkeddata/rabel/rabel.js -test=../../w3c/data-shapes/data-shapes-test-suite/tests/dash/core/node/manifest.ttl"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linkeddata/shacl-check"
+  },
+  "keywords": [
+    "shacl",
+    "shape",
+    "rdf",
+    "ldp",
+    "linked",
+    "data"
+  ],
+  "author": "Tim Berners-Lee <timbl@mit.edu>",
+  "contributors": [
+    "Daniel Friedman <danielf@mit.edu>"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/linkeddata/shacl-check/issues"
+  },
+  "homepage": "https://github.com/linkeddata/shacl-check",
+  "dependencies": {
+    "rdflib": "^0.15.0"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.18.0",
+    "babel-preset-es2015": "^6.18.0",
+    "babelify": "^7.3.0",
+    "browserify": "^13.0.0",
+    "minifyify": "^7.2.1",
+    "qunit": "^0.9.0",
+    "standard": "^5.4.1",
+    "tape": "^4.4.0"
+  },
+  "standard": {
+    "globals": [
+      "$rdf",
+      "QUnit"
+    ]
+  }
+}

@@ -2,7 +2,7 @@
   "name": "shacl-check",
   "version": "0.0.2",
   "description": "Subset of SHACL test functionality.",
-  "main": "./lib/shacl=check.js",
+  "main": "./src/shacl=check.js",
   "files": [
     "lib",
     "dist"

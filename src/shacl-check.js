@@ -20,6 +20,7 @@ class ShapeChecker {
     this.shapeDoc = shapeDoc
     this.targetDoc = targetDoc
     this.reportDoc = reportDoc
+    this.checked = [] // avoid dups
     this.options = options || {} // eg noResultMessage
     if (reportDoc) {
       this.report = this.kb.bnode()
@@ -35,6 +36,7 @@ class ShapeChecker {
   }
 
   // See https://www.w3.org/TR/shacl/#validation-report
+
   validationResult (issue) {
     this.conforms = false
     if (this.reportDoc) {
@@ -44,6 +46,10 @@ class ShapeChecker {
       this.kb.add(result, sh('focusNode'), issue.node, this.reportDoc)
       this.kb.add(result, sh('sourceShape'), issue.shape, this.reportDoc)
       if (issue.path) this.kb.add(result, sh('resultPath'), issue.path, this.reportDoc)
+      // Extra - not in spec but valuable for diagnostics - which rule is broken?
+      if (issue.property && issue.property.uri) {
+        this.kb.add(result, sh('resultProperty'), issue.property, this.reportDoc)
+      }
       if (issue.object !== undefined) {
         this.kb.add(result, sh('value'), issue.object, this.reportDoc)
       }
@@ -77,21 +83,21 @@ class ShapeChecker {
       .forEach(function (st) {
         var targetClass = st.object
         var shape = st.subject
-        console.log(' Target class ' + targetClass)
+        console.log('  Target class ' + targetClass)
         kb.each(null, a, targetClass).forEach(function (target) {
-          console.log('   Target class member ' + target)
-          post(checker.checkNodeShape(target, shape))
+          console.log('    Target class member ' + target)
+          post(checker.checkNodeShape(target, shape, true))
         })
       })
     kb.statementsMatching(null, sh('targetObjectsOf'), null, this.shapeDoc)
       .forEach(function (st) {
         var targetProperty = st.object
         var shape = st.subject
-        console.log(' Target objectsOf property ' + targetProperty)
+        console.log('  Target objectsOf property ' + targetProperty)
         kb.statementsMatching(null, targetProperty).forEach(function (st) {
           let target = st.object
-          // console.log('  Target objectsOf object: ' + target)
-          post(checker.checkNodeShape(target, shape))
+          console.log('    targetObjectsOf target ' + target)
+          post(checker.checkNodeShape(target, shape, true))
         })
       })
     kb.statementsMatching(null, sh('targetSubjectsOf'), null, this.shapeDoc)
@@ -102,7 +108,7 @@ class ShapeChecker {
         kb.statementsMatching(null, targetProperty).forEach(function (st) {
           let target = st.subject
           // console.log('  Target subjectOf subject: ' + target)
-          post(checker.checkNodeShape(target, shape))
+          post(checker.checkNodeShape(target, shape, true))
         })
       })
     kb.statementsMatching(null, sh('targetNode'), null, this.shapeDoc)
@@ -180,11 +186,18 @@ class ShapeChecker {
 
   // Returns an array of issues else false
   //
-  checkNodeShape (node, shape) {
+  checkNodeShape (node, shape, avoidDuplicates) {
     const kb = this.kb
     const checker = this
-    console.log(' Applying shape ' + shape)
-    console.log('        to node ' + node)
+    avoidDuplicates = !!avoidDuplicates
+    console.log('      Applying shape ' + shape)
+    // console.log('        to node ' + node)   // Obvious from previous output
+    const key = node.uri + ' - ' + shape.uri
+    if (avoidDuplicates && node.uri && shape.uri && this.checked[key]) {
+      console.log('              duplicate.')
+      return
+    }
+    this.checked[key] = true
 
     var closed = kb.anyValue(shape, sh('closed'))
     closed = {'true': true, '1': true}[closed] || false
@@ -206,20 +219,22 @@ class ShapeChecker {
       issues.push(issue)
     }
     kb.each(shape, sh('property')).forEach(function (property) {
+      // console.log('          @@ property ' + property)
       let path = kb.the(property, sh('path')) // Assume simple predicate at this stage
+      let constraint
       if (!path) {
-        console.log('@@ NO PATH! ' + kb.connectedStatements(property).length)
+        console.log('@@ SHAPE ERROR: Property has no path! ' + kb.connectedStatements(property).length)
         console.log('as subject: ' + kb.statementsMatching(property).length)
         console.log('as object: ' + kb.statementsMatching(null, null, property).length)
         console.log('property: ' + property)
         console.log('shape: ' + shape)
         console.log('about shape: ' + kb.connectedStatements(shape).map(x => x.toNT()))
         console.log('node: ' + node)
-        process.exit(-99)
+        throw new Error('@@ SHAPE ERROR: Property has no path! in shape ' + shape)
       }
       // console.log('    Checking property ' + property + ': ' + path)
       let values = checker.followPath(node, path)
-      if (path.uri) {
+      if (path.uri) { // Simple paths only
         allowed[path.uri] = true
       }
 
@@ -231,10 +246,20 @@ class ShapeChecker {
       if (maxCount && values.length > maxCount) {
         noteIssue({node, shape, property, path, cc: 'MaxCount', message: 'Too many (' + values.length + ') ' + path + ' on ' + node})
       }
-      let constraint
 
       for (var i = 0; i < values.length; i++) {
         let object = values[i]
+
+        // Extra: checking for forward and backward links
+        constraint = kb.any(property, RDF('type'), sh('ForwardLink'))
+        if (constraint && !kb.holds(node, path, object, node.doc())) {
+          noteIssue({node, shape, property, path, cc: 'ForwardLink', message: 'ForwardLink to ' + object + ' not stored at subject ' + node})
+        }
+        constraint = kb.any(property, RDF('type'), sh('BackwardLink'))
+        if (constraint && !kb.holds(node, path, object, object.doc())) {
+          noteIssue({node, shape, property, path, cc: 'BackwardLink', message: 'BackwardLink subject ' + node + ' not stored at object ' + object})
+        }
+
 
         // ///// Checking for object class membership
 
@@ -321,7 +346,7 @@ class ShapeChecker {
           let actual = termTypeMap[object.termType] || object.termType
           let allowed = constraint.uri.split('#')[1] // eg 'BlankNodeOrIRI'
           if (!allowed.includes(actual)) {
-            noteIssue({node, shape, property, path, object, cc: 'NodeKind', message: 'Error ' + object + ' should be of node kind:  ' + constraint})
+            noteIssue({node, shape, property, path, object, cc: 'NodeKind', message: 'Error ' + object + ' should be of node kind:  ' + allowed})
           }
         }
 

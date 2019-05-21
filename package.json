@@ -2,7 +2,7 @@
   "name": "shacl-check",
   "version": "1.0.0",
   "description": "Subset of SHACL test functionality.",
-  "main": "./src/shacl=check.js",
+  "main": "./src/shacl-check.js",
   "files": [
     "lib",
     "dist"
@@ -16,7 +16,6 @@
     "clean": "rm -rf dist/ && rm -rf lib/",
     "standard": "standard src/*",
     "pretest": "npm run standard",
-    "test": "node ../../linkeddata/rabel/index.js -test=../../w3c/data-shapes/data-shapes-test-suite/tests/dash/core/node/manifest.ttl"
   },
   "repository": {
     "type": "git",
@@ -40,7 +39,7 @@
   },
   "homepage": "https://github.com/linkeddata/shacl-check",
   "dependencies": {
-    "rdflib": "^0.15.0"
+    "rdflib": ">=0.15.0"
   },
   "devDependencies": {
     "babel-cli": "^6.18.0",

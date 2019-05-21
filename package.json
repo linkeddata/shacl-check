@@ -2,10 +2,9 @@
   "name": "shacl-check",
   "version": "1.0.2",
   "description": "Subset of SHACL test functionality.",
-  "main": "./src/shacl-check.js",
+  "main": "shacl-check.js",
   "files": [
-    "lib",
-    "dist"
+    "shacl-check.js"
   ],
   "scripts": {
     "build-lib": "babel src -d lib",

@@ -15,7 +15,7 @@
     "build": "npm run build-lib && npm run build-browserified && npm run build-minified",
     "clean": "rm -rf dist/ && rm -rf lib/",
     "standard": "standard src/*",
-    "pretest": "npm run standard",
+    "pretest": "npm run standard"
   },
   "repository": {
     "type": "git",

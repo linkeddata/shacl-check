@@ -1,6 +1,6 @@
 {
   "name": "shacl-check",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Subset of SHACL test functionality.",
   "main": "./src/shacl-check.js",
   "files": [

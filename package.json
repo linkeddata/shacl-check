@@ -16,7 +16,7 @@
     "clean": "rm -rf dist/ && rm -rf lib/",
     "standard": "standard src/*",
     "pretest": "npm run standard",
-    "test": "node ../../linkeddata/rabel/rabel.js -test=../../w3c/data-shapes/data-shapes-test-suite/tests/dash/core/node/manifest.ttl"
+    "test": "node ../../linkeddata/rabel/index.js -test=../../w3c/data-shapes/data-shapes-test-suite/tests/dash/core/node/manifest.ttl"
   },
   "repository": {
     "type": "git",

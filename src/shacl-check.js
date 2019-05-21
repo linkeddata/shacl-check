@@ -260,7 +260,6 @@ class ShapeChecker {
           noteIssue({node, shape, property, path, cc: 'BackwardLink', message: 'BackwardLink subject ' + node + ' not stored at object ' + object})
         }
 
-
         // ///// Checking for object class membership
 
         let constraints = kb.each(property, sh('class'))
@@ -371,8 +370,13 @@ class ShapeChecker {
             }
           }
           if (iss.length) {
-            noteIssue({node, shape, property, path, object, cc: 'And',
-            message: 'Error ' + object + ' does not match ALL shapes  ' + constraint})
+            noteIssue({node,
+              shape,
+              property,
+              path,
+              object,
+              cc: 'And',
+              message: 'Error ' + object + ' does not match ALL shapes  ' + constraint})
             issues = issues.concat(iss) // @@@ Give all these details too?  it is logical
           }
         }
@@ -392,8 +396,13 @@ class ShapeChecker {
             }
           }
           if (!ok) {
-            noteIssue({node, shape, property, path, object, cc: 'Or',
-            message: 'Error ' + object + ' does not match EITHER shape  ' + constraint})
+            noteIssue({node,
+              shape,
+              property,
+              path,
+              object,
+              cc: 'Or',
+              message: 'Error ' + object + ' does not match EITHER shape  ' + constraint})
           // issues = issues.concat(iss)
           }
         }
@@ -410,8 +419,13 @@ class ShapeChecker {
             }
           }
           if (!ok) {
-            noteIssue({node, shape, property, path, object, cc: 'Xone',
-            message: 'Error ' + object + ' does not match EXACTLY ONE shape  ' + constraint})
+            noteIssue({node,
+              shape,
+              property,
+              path,
+              object,
+              cc: 'Xone',
+              message: 'Error ' + object + ' does not match EXACTLY ONE shape  ' + constraint})
             // issues = issues.concat(iss)
           }
         }
